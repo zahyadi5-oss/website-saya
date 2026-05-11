@@ -1,11 +1,231 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Website Pertama</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MQTT WebSocket Client</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/mqttws31.min.js"></script>
+
+<style>
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f0f2f5;
+  display: flex;
+  justify-content: center;
+  padding: 40px 10px;
+}
+
+.panel {
+  background: white;
+  width: 100%;
+  max-width: 700px;
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+}
+
+h2 {
+  margin-top: 0;
+  text-align: center;
+}
+
+.status {
+  text-align: center;
+  padding: 10px;
+  border-radius: 8px;
+  color: white;
+  margin-bottom: 20px;
+  background: gray;
+}
+
+input, select, button {
+  width: 100%;
+  padding: 10px;
+  margin-top: 8px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  font-size: 14px;
+}
+
+button {
+  background: #007bff;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #0056b3;
+}
+
+.row {
+  margin-bottom: 15px;
+}
+
+.messages {
+  margin-top: 20px;
+  background: #111;
+  color: #0f0;
+  padding: 15px;
+  border-radius: 8px;
+  height: 200px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.message-line {
+  margin-bottom: 8px;
+  border-bottom: 1px solid #333;
+  padding-bottom: 5px;
+}
+</style>
 </head>
+
 <body>
-  <h1>Hello GitHub Pages 🚀</h1>
-  <h1>Website saya sudah update 🎉</h1>
-  <p>Belajar GitHub Pages itu gampang!</p>
+
+<div class="panel">
+
+<h2>MQTT WebSocket Client</h2>
+
+<div id="status" class="status">Disconnected</div>
+
+<div class="row">
+<select id="protocol">
+  <option value="wss">wss (SSL)</option>
+  <option value="ws">ws (Non SSL)</option>
+</select>
+<input id="broker" value="broker.hivemq.com">
+<input id="port" value="8884">
+<input id="path" value="/mqtt">
+<button onclick="connectMQTT()">Connect</button>
+</div>
+
+<hr>
+
+<div class="row">
+<input id="subtopic" placeholder="Subscribe Topic" value="test/topic">
+<button onclick="subscribeTopic()">Subscribe</button>
+</div>
+
+<div class="row">
+<input id="pubtopic" placeholder="Publish Topic" value="test/topic">
+<input id="message" placeholder="Message">
+<button onclick="publishMessage()">Publish</button>
+</div>
+
+<button onclick="clearMessages()" style="background:#dc3545;margin-top:10px;">
+Clear Messages
+</button>
+
+<div id="messages" class="messages"></div>
+
+</div>
+
+<script>
+
+let client;
+let connected = false;
+
+// AUTO CONNECT
+window.addEventListener("load", function() {
+  connectMQTT();
+});
+
+function connectMQTT() {
+
+  const protocol = document.getElementById("protocol").value;
+  const broker = document.getElementById("broker").value;
+  const port = parseInt(document.getElementById("port").value);
+  const path = document.getElementById("path").value;
+  const clientID = "web_" + Math.floor(Math.random() * 10000);
+
+  client = new Paho.MQTT.Client(
+    broker,
+    port,
+    path,
+    clientID
+  );
+
+  client.onConnectionLost = function() {
+    connected = false;
+    setStatus("Connection Lost", "red");
+  };
+
+  client.onMessageArrived = function(message) {
+    addMessage(
+      "Topic: " + message.destinationName +
+      " | Message: " + message.payloadString
+    );
+  };
+
+  client.connect({
+    useSSL: (protocol === "wss"),
+    timeout: 5,
+    onSuccess: function() {
+      connected = true;
+      setStatus("Connected to " + broker, "green");
+    },
+    onFailure: function() {
+      setStatus("Connection Failed", "red");
+    }
+  });
+}
+
+function subscribeTopic() {
+
+  if (!connected) {
+    alert("Not connected");
+    return;
+  }
+
+  const topic = document.getElementById("subtopic").value;
+  client.subscribe(topic);
+  addMessage("Subscribed to: " + topic);
+}
+
+function publishMessage() {
+
+  if (!connected) {
+    alert("Not connected");
+    return;
+  }
+
+  const topic = document.getElementById("pubtopic").value;
+  const msg = document.getElementById("message").value;
+
+  const message = new Paho.MQTT.Message(msg);
+  message.destinationName = topic;
+  client.send(message);
+
+  addMessage("Sent: " + msg);
+}
+
+function addMessage(text) {
+
+  const messagesDiv = document.getElementById("messages");
+
+  const line = document.createElement("div");
+  line.className = "message-line";
+  line.textContent = text;
+
+  messagesDiv.appendChild(line);
+  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+
+function clearMessages() {
+  document.getElementById("messages").innerHTML = "";
+}
+
+function setStatus(text, color) {
+  const status = document.getElementById("status");
+  status.innerHTML = text;
+  status.style.background = color;
+}
+
+</script>
+
 </body>
 </html>
