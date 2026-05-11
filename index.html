@@ -46,20 +46,14 @@ h2{
   background:var(--primary);
   color:#fff;
   padding:12px;
-  cursor:pointer;
   font-weight:600;
 }
 
 .card-content{
   padding:15px;
-  display:none;
 }
 
-.card-content.active{
-  display:block;
-}
-
-input, select, button{
+input, button{
   width:100%;
   padding:8px;
   margin-bottom:10px;
@@ -94,7 +88,7 @@ button:hover{
   background:#111;
   color:#0f0;
   padding:10px;
-  height:220px;
+  height:240px;
   overflow-y:auto;
   font-family:monospace;
   border-radius:8px;
@@ -114,47 +108,28 @@ button:hover{
 <body>
 
 <div class="container">
+
 <h2>MQTT WebSocket Dashboard</h2>
+
 <div id="status">Connecting...</div>
-
-<div class="card">
-  <div class="card-header">MQTT Config</div>
-  <div class="card-content active">
-    <select id="protocol">
-      <option value="wss" selected>wss</option>
-      <option value="ws">ws</option>
-    </select>
-    <input id="broker" value="broker.emqx.io">
-    <input id="port" value="8084">
-    <input id="path" value="/mqtt">
-    <button id="connectBtn">Reconnect</button>
-  </div>
-</div>
-
-<div class="card">
-  <div class="card-header">Subscribe</div>
-  <div class="card-content">
-    <input id="subtopic" placeholder="example/topic">
-    <button id="subscribeBtn">Subscribe</button>
-  </div>
-</div>
 
 <div class="card">
   <div class="card-header">Publish</div>
   <div class="card-content">
     <input id="pubtopic" placeholder="example/topic">
     <input id="message" placeholder="hello mqtt">
-    <button id="publishBtn">Send</button>
+    <button onclick="publishMessage()">Send</button>
   </div>
 </div>
 
 <div class="card">
   <div class="card-header">Messages</div>
-  <div class="card-content active">
-    <button id="clearBtn">Clear Messages</button>
+  <div class="card-content">
+    <button onclick="clearLog()">Clear Messages</button>
     <div id="messages"></div>
   </div>
 </div>
+
 </div>
 
 <script>
@@ -162,12 +137,9 @@ const $ = id => document.getElementById(id);
 let client = null;
 let connected = false;
 
-/* Toggle card */
-document.querySelectorAll(".card-header").forEach(header=>{
-  header.addEventListener("click",()=>{
-    header.nextElementSibling.classList.toggle("active");
-  });
-});
+const BROKER = "broker.emqx.io";
+const PORT = 8084;
+const PATH = "/mqtt";
 
 /* Log */
 function log(text){
@@ -190,77 +162,71 @@ function setStatus(text,type){
     "var(--primary)";
 }
 
-/* CONNECT FUNCTION */
+/* Connect */
 function connectMQTT(){
 
-  if(client && connected){
-    client.disconnect();
-  }
-
-  const protocol = $("protocol").value;
-  const broker = $("broker").value;
-  const port = parseInt($("port").value);
-  const path = $("path").value;
+  setStatus("Connecting...","danger");
 
   const clientID = "web_" + Math.random().toString(16).substr(2,8);
 
-  const url = protocol + "://" + broker + ":" + port + path;
+  client = new Paho.MQTT.Client(
+    BROKER,
+    PORT,
+    PATH,
+    clientID
+  );
 
-  client = new Paho.MQTT.Client(url, clientID);
-
-  client.onConnectionLost = ()=>{
+  client.onConnectionLost = function(){
     connected=false;
-    setStatus("Connection Lost - Reconnecting...","danger");
+    setStatus("Disconnected - Reconnecting...","danger");
     log("Connection lost");
-
-    setTimeout(connectMQTT,3000); // auto reconnect
+    setTimeout(connectMQTT,3000);
   };
 
-  client.onMessageArrived = message=>{
-    log(`Topic: ${message.destinationName} | ${message.payloadString}`);
+  client.onMessageArrived = function(message){
+    log("Topic: " + message.destinationName + 
+        " | " + message.payloadString);
   };
 
   client.connect({
-    useSSL: protocol==="wss",
+    useSSL:true,
     timeout:5,
-    reconnect:true,
-    onSuccess: ()=>{
+    onSuccess:function(){
       connected=true;
-      setStatus(`Connected to ${broker}`,"success");
-      log("Connected");
+      setStatus("Connected to " + BROKER,"success");
+      log("Connected successfully");
     },
-    onFailure: err=>{
-      setStatus("Connection Failed","danger");
-      log("Failed: "+err.errorMessage);
+    onFailure:function(err){
+      setStatus("Connection Failed - Retrying...","danger");
+      log("Failed: " + err.errorMessage);
+      setTimeout(connectMQTT,3000);
     }
   });
 }
 
-/* BUTTONS */
-$("connectBtn").addEventListener("click",connectMQTT);
+/* Publish */
+function publishMessage(){
+  if(!connected){
+    alert("Not connected yet");
+    return;
+  }
 
-$("subscribeBtn").addEventListener("click",()=>{
-  if(!connected) return alert("Not connected");
-  const topic = $("subtopic").value;
-  client.subscribe(topic);
-  log("Subscribed: "+topic);
-});
-
-$("publishBtn").addEventListener("click",()=>{
-  if(!connected) return alert("Not connected");
   const topic = $("pubtopic").value;
   const msg = $("message").value;
+
   const message = new Paho.MQTT.Message(msg);
   message.destinationName = topic;
   client.send(message);
-  log("Sent: "+msg);
-});
 
-$("clearBtn").addEventListener("click",()=>{
+  log("Sent → " + msg);
+}
+
+/* Clear */
+function clearLog(){
   $("messages").innerHTML="";
-});
+}
 
-/* AUTO CONNECT SAAT HALAMAN DIBUKA */
+/* AUTO CONNECT SAAT PAGE LOAD */
 window.addEventListener("load",()=>{
   connectMQTT();
 });
