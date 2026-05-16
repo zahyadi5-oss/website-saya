@@ -1,139 +1,283 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ESP WebSocket Monitor</title>
+<title>MQTT WebSocket Dashboard</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
 
 <style>
-    body {
-        font-family: Arial, sans-serif;
-        background-color: #f4f4f4;
-        display: flex;
-        justify-content: center;
-        margin-top: 40px;
-    }
+:root{
+  --primary:#2563eb;
+  --success:#16a34a;
+  --danger:#dc2626;
+  --bg:#f1f5f9;
+}
 
-    .panel {
-        width: 95%;
-        max-width: 900px;
-        background: white;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-    }
+body{
+  font-family: system-ui, sans-serif;
+  background: var(--bg);
+  margin:0;
+  padding:30px 15px;
+  display:flex;
+  justify-content:center;
+}
 
-    h2 {
-        text-align: center;
-    }
+.container{
+  width:100%;
+  max-width:800px;
+}
 
-    #messages {
-        height: 300px;
-        border: 1px solid #ccc;
-        padding: 10px;
-        overflow-y: auto;
-        background: #111;
-        color: #00ff00;
-        font-family: monospace;
-        margin-bottom: 15px;
-    }
+h2{
+  margin-top:0;
+  text-align:center;
+}
 
-    .msg {
-        display: block;
-        margin-bottom: 5px;
-    }
+.card{
+  background:#fff;
+  border-radius:10px;
+  box-shadow:0 4px 10px rgba(0,0,0,.05);
+  margin-bottom:15px;
+  overflow:hidden;
+}
 
-    button {
-        padding: 8px 15px;
-        margin-right: 5px;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        font-weight: bold;
-    }
+.card-header{
+  background:var(--primary);
+  color:#fff;
+  padding:12px;
+  cursor:pointer;
+  font-weight:600;
+}
 
-    .connect { background-color: #28a745; color: white; }
-    .disconnect { background-color: #dc3545; color: white; }
-    .clear { background-color: #007bff; color: white; }
+.card-content{
+  padding:15px;
+  display:none;
+}
 
+.card-content.active{
+  display:block;
+}
+
+input, select, button{
+  width:100%;
+  padding:8px;
+  margin-bottom:10px;
+  border-radius:6px;
+  border:1px solid #ccc;
+  box-sizing:border-box;
+}
+
+button{
+  background:var(--primary);
+  color:white;
+  border:none;
+  cursor:pointer;
+  font-weight:600;
+}
+
+button:hover{
+  opacity:.9;
+}
+
+#status{
+  padding:12px;
+  border-radius:8px;
+  font-weight:600;
+  margin-bottom:15px;
+  background:var(--danger);
+  color:#fff;
+  text-align:center;
+}
+
+#messages{
+  background:#111;
+  color:#0f0;
+  padding:10px;
+  height:220px;
+  overflow-y:auto;
+  font-family:monospace;
+  border-radius:8px;
+  font-size:14px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.log-item{
+  border-bottom:1px solid rgba(0,255,0,.2);
+  padding-bottom:4px;
+  word-break:break-word;
+}
 </style>
 </head>
-
 <body>
 
-<div class="panel">
-    <h2>ESP8266 WebSocket Monitor</h2>
+<div class="container">
 
+<h2>MQTT WebSocket Dashboard</h2>
+
+<div id="status">Not Connected</div>
+
+<!-- MQTT CONFIG -->
+<div class="card">
+  <div class="card-header">MQTT Config</div>
+  <div class="card-content active">
+    <select id="protocol">
+      <option value="wss">wss</option>
+      <option value="ws">ws</option>
+    </select>
+    <input id="broker" value="broker.emqx.io">
+    <input id="port" value="8084">
+    <input id="path" value="/mqtt">
+    <button id="connectBtn">Connect</button>
+  </div>
+</div>
+
+<!-- SUBSCRIBE -->
+<div class="card">
+  <div class="card-header">Subscribe</div>
+  <div class="card-content">
+    <input id="subtopic" placeholder="example/topic">
+    <button id="subscribeBtn">Subscribe</button>
+  </div>
+</div>
+
+<!-- PUBLISH -->
+<div class="card">
+  <div class="card-header">Publish</div>
+  <div class="card-content">
+    <input id="pubtopic" placeholder="example/topic">
+    <input id="message" placeholder="hello mqtt">
+    <button id="publishBtn">Send</button>
+  </div>
+</div>
+
+<!-- MESSAGES -->
+<div class="card">
+  <div class="card-header">Messages</div>
+  <div class="card-content active">
+    <button id="clearBtn">Clear Messages</button>
     <div id="messages"></div>
+  </div>
+</div>
 
-    <button class="connect" onclick="connectWebSocket()">Connect</button>
-    <button class="disconnect" onclick="disconnectWebSocket()">Disconnect</button>
-    <button class="clear" onclick="clearMessages()">Clear Message</button>
 </div>
 
 <script>
+const $ = id => document.getElementById(id);
+let client = null;
+let connected = false;
 
-let socket;
-let reconnectInterval = 5000;
-let autoReconnect = true;
+/* Toggle card */
+document.querySelectorAll(".card-header").forEach(header=>{
+  header.addEventListener("click",()=>{
+    header.nextElementSibling.classList.toggle("active");
+  });
+});
 
-function addMessage(text) {
-    const msgBox = document.getElementById("messages");
-    const newMsg = document.createElement("div");
-    newMsg.className = "msg";
-    newMsg.textContent = text;
-    msgBox.appendChild(newMsg);
-    msgBox.scrollTop = msgBox.scrollHeight;
-}
+/* Log function */
+const log = text=>{
+  const msgBox = $("messages");
+  const time = new Date().toLocaleTimeString();
 
-function connectWebSocket() {
+  const item = document.createElement("div");
+  item.className = "log-item";
+  item.textContent = `[${time}] ${text}`;
 
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        addMessage("Sudah terhubung.");
-        return;
-    }
-
-    addMessage("Mencoba koneksi...");
-
-    socket = new WebSocket("ws://" + window.location.hostname + ":81/");
-
-    socket.onopen = function() {
-        addMessage("Terhubung ke server.");
-    };
-
-    socket.onmessage = function(event) {
-        addMessage("Diterima: " + event.data);
-    };
-
-    socket.onclose = function() {
-        addMessage("Koneksi terputus.");
-        if (autoReconnect) {
-            setTimeout(connectWebSocket, reconnectInterval);
-        }
-    };
-
-    socket.onerror = function() {
-        addMessage("Terjadi error koneksi.");
-        socket.close();
-    };
-}
-
-function disconnectWebSocket() {
-    autoReconnect = false;
-    if (socket) {
-        socket.close();
-    }
-}
-
-function clearMessages() {
-    document.getElementById("messages").innerHTML = "";
-}
- 
-// ===== AUTO CONNECT DENGAN DELAY 5 DETIK =====
-window.onload = function() {
-    addMessage("Menunggu 5 detik dulu sebelum auto connect...");
-    setTimeout(connectWebSocket, 5000);
+  msgBox.appendChild(item);
+  msgBox.scrollTop = msgBox.scrollHeight;
 };
+
+/* Status update */
+const setStatus = (text,type)=>{
+  const status = $("status");
+  status.textContent = text;
+  status.style.background =
+    type==="success" ? "var(--success)" :
+    type==="danger" ? "var(--danger)" :
+    "var(--primary)";
+};
+
+/* CONNECT */
+$("connectBtn").addEventListener("click",()=>{
+
+  const protocol = $("protocol").value;
+  const broker = $("broker").value;
+  const port = parseInt($("port").value);
+  const path = $("path").value;
+
+  const clientID = "web_" + Math.random().toString(16).substr(2,8);
+
+  client = new Paho.MQTT.Client(
+    broker,
+    port,
+    path,
+    clientID
+  );
+
+  client.onConnectionLost = ()=>{
+    connected=false;
+    setStatus("Connection Lost","danger");
+    log("Connection lost");
+  };
+
+  client.onMessageArrived = message=>{
+    log(`Topic: ${message.destinationName} | ${message.payloadString}`);
+  };
+
+  client.connect({
+    useSSL: protocol==="wss",
+    timeout:5,
+    onSuccess: ()=>{
+      connected=true;
+      setStatus(`Connected to ${broker}`,"success");
+      log("Connected");
+    },
+    onFailure: err=>{
+      setStatus("Connection Failed","danger");
+      log("Failed: "+err.errorMessage);
+    }
+  });
+});
+
+/* SUBSCRIBE */
+$("subscribeBtn").addEventListener("click",()=>{
+  if(!connected) return alert("Not connected");
+
+  const topic = $("subtopic").value;
+  client.subscribe(topic);
+  log("Subscribed: "+topic);
+});
+
+/* PUBLISH */
+$("publishBtn").addEventListener("click",()=>{
+  if(!connected) return alert("Not connected");
+
+  const topic = $("pubtopic").value;
+  const msg = $("message").value;
+
+  const message = new Paho.MQTT.Message(msg);
+  message.destinationName = topic;
+  client.send(message);
+
+  log("Sent: "+msg);
+});
+
+/* CLEAR LOG */
+$("clearBtn").addEventListener("click",()=>{
+  $("messages").innerHTML = "";
+});
+
+/* ============================= */
+/* AUTO CLICK CONNECT 3 DETIK */
+/* ============================= */
+
+window.addEventListener("load",()=>{
+  setTimeout(()=>{
+    $("connectBtn").click();
+  },3000);
+});
 
 </script>
 
