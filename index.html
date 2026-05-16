@@ -74,7 +74,7 @@
 <script>
 
 let socket;
-let reconnectInterval = 3000;
+let reconnectInterval = 5000;
 let autoReconnect = true;
 
 function addMessage(text) {
@@ -128,10 +128,10 @@ function disconnectWebSocket() {
 function clearMessages() {
     document.getElementById("messages").innerHTML = "";
 }
-
+ 
 // ===== AUTO CONNECT DENGAN DELAY 5 DETIK =====
 window.onload = function() {
-    addMessage("Menunggu 5 detik sebelum auto connect...");
+    addMessage("Menunggu 5 detik dulu sebelum auto connect...");
     setTimeout(connectWebSocket, 5000);
 };
 
