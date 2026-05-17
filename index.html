@@ -59,7 +59,7 @@ h2{
   display:block;
 }
 
-input, select, button{
+input, button{
   width:100%;
   padding:8px;
   margin-bottom:10px;
@@ -117,28 +117,13 @@ button:hover{
 
 <h2>MQTT WebSocket Dashboard</h2>
 
-<div id="status">Not Connected</div>
-
-<!-- MQTT CONFIG -->
-<div class="card">
-  <div class="card-header">MQTT Config</div>
-  <div class="card-content active">
-    <select id="protocol">
-      <option value="wss">wss</option>
-      <option value="ws">ws</option>
-    </select>
-    <input id="broker" value="broker.emqx.io">
-    <input id="port" value="8084">
-    <input id="path" value="/mqtt">
-    <button id="connectBtn">Connect</button>
-  </div>
-</div>
+<div id="status">Connecting...</div>
 
 <!-- SUBSCRIBE -->
 <div class="card">
   <div class="card-header">Subscribe</div>
   <div class="card-content">
-    <input id="subtopic" placeholder="example/topic">
+    <input id="subtopic" value="datafromsensor">
     <button id="subscribeBtn">Subscribe</button>
   </div>
 </div>
@@ -147,8 +132,8 @@ button:hover{
 <div class="card">
   <div class="card-header">Publish</div>
   <div class="card-content">
-    <input id="pubtopic" placeholder="example/topic">
-    <input id="message" placeholder="hello mqtt">
+    <input id="pubtopic" value="example/topic">
+    <input id="message" value="hello mqtt">
     <button id="publishBtn">Send</button>
   </div>
 </div>
@@ -169,27 +154,35 @@ const $ = id => document.getElementById(id);
 let client = null;
 let connected = false;
 
-/* Toggle card */
+/* ============================= */
+/* CONFIG MQTT (HARDCODE) */
+/* ============================= */
+
+const MQTT_CONFIG = {
+  protocol: "wss",
+  broker: "broker.emqx.io",
+  port: 8084,
+  path: "/mqtt"
+};
+
+/* ============================= */
+
 document.querySelectorAll(".card-header").forEach(header=>{
   header.addEventListener("click",()=>{
     header.nextElementSibling.classList.toggle("active");
   });
 });
 
-/* Log function */
 const log = text=>{
   const msgBox = $("messages");
   const time = new Date().toLocaleTimeString();
-
   const item = document.createElement("div");
   item.className = "log-item";
   item.textContent = `[${time}] ${text}`;
-
   msgBox.appendChild(item);
   msgBox.scrollTop = msgBox.scrollHeight;
 };
 
-/* Status update */
 const setStatus = (text,type)=>{
   const status = $("status");
   status.textContent = text;
@@ -199,20 +192,15 @@ const setStatus = (text,type)=>{
     "var(--primary)";
 };
 
-/* CONNECT */
-$("connectBtn").addEventListener("click",()=>{
-
-  const protocol = $("protocol").value;
-  const broker = $("broker").value;
-  const port = parseInt($("port").value);
-  const path = $("path").value;
+/* CONNECT OTOMATIS */
+function connectMQTT(){
 
   const clientID = "web_" + Math.random().toString(16).substr(2,8);
 
   client = new Paho.MQTT.Client(
-    broker,
-    port,
-    path,
+    MQTT_CONFIG.broker,
+    MQTT_CONFIG.port,
+    MQTT_CONFIG.path,
     clientID
   );
 
@@ -227,30 +215,34 @@ $("connectBtn").addEventListener("click",()=>{
   };
 
   client.connect({
-    useSSL: protocol==="wss",
+    useSSL: MQTT_CONFIG.protocol==="wss",
     timeout:5,
     onSuccess: ()=>{
       connected=true;
-      setStatus(`Connected to ${broker}`,"success");
+      setStatus(`Connected to ${MQTT_CONFIG.broker}`,"success");
       log("Connected");
+
+      /* AUTO SUBSCRIBE */
+      const topic = $("subtopic").value;
+      client.subscribe(topic);
+      log("Auto Subscribed: "+topic);
     },
     onFailure: err=>{
       setStatus("Connection Failed","danger");
       log("Failed: "+err.errorMessage);
     }
   });
-});
+}
 
-/* SUBSCRIBE */
+/* SUBSCRIBE BUTTON */
 $("subscribeBtn").addEventListener("click",()=>{
   if(!connected) return alert("Not connected");
-
   const topic = $("subtopic").value;
   client.subscribe(topic);
   log("Subscribed: "+topic);
 });
 
-/* PUBLISH */
+/* PUBLISH BUTTON */
 $("publishBtn").addEventListener("click",()=>{
   if(!connected) return alert("Not connected");
 
@@ -264,21 +256,15 @@ $("publishBtn").addEventListener("click",()=>{
   log("Sent: "+msg);
 });
 
-/* CLEAR LOG */
+/* CLEAR */
 $("clearBtn").addEventListener("click",()=>{
   $("messages").innerHTML = "";
 });
 
-/* ============================= */
-/* AUTO CLICK CONNECT 3 DETIK */
-/* ============================= */
-
+/* CONNECT SAAT LOAD */
 window.addEventListener("load",()=>{
-  setTimeout(()=>{
-    $("connectBtn").click();
-  },3000);
+  connectMQTT();
 });
-
 </script>
 
 </body>
