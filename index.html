@@ -225,6 +225,8 @@ function connectMQTT(){
       connected=false;
       setStatus(false);
       logMessage("Connection Failed");
+      setTimeout(connectMQTT,1000);
+      setTimeout(subscribeTopic,5000);
     }
   });
 }
