@@ -207,6 +207,7 @@ function connectMQTT(){
     setStatus(false);
     logMessage("Connection Lost");
     setTimeout(connectMQTT,1000);
+    setTimeout(subscribeTopic,5000);
   }
 
   client.onMessageArrived=function(message){
